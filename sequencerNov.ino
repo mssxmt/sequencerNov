@@ -4,9 +4,11 @@
 #include <Ead.h>
 #include <mozzi_midi.h> // MozziでMIDIを用いるためのヘッダ
 #include <tables/sin2048_int8.h> // サイン波のテーブル
+#include <LowPassFilter.h>
 
 // SIN2048_DATA2048のデータをaSinに格納
 Oscil <SIN2048_NUM_CELLS, AUDIO_RATE> aSin(SIN2048_DATA);
+LowPassFilter lpf;
 
 // コントロールレートをあらかじめ定義
 #define CONTROL_RATE 64
@@ -16,22 +18,17 @@ EventDelay kDelay;
 Ead kEnvelope(CONTROL_RATE);
 
 
-
-// アナログピンマッピング
-#define SYNC_CONTROL         2 // For ribbon controler(SoftPot)
-#define FUNC_SELECTOR        0
-#define SCALE_SELECTOR       1
-#define SYNC_IN              3
 // シーケンサーステップ.(Digital)
 #define  SYNC_OUT          13
 #define  STEP_1            12
 #define  STEP_2            11
 #define  STEP_3            10
-#define  STEP_4            8 //D9はオーディオ出力に使うから飛ばし
+#define  STEP_4            8
 #define  STEP_5            7
 #define  STEP_6            6
 #define  STEP_7            5
 #define  STEP_8            4
+#define  SWITCH1           3
 
 
 
@@ -46,15 +43,18 @@ int scaleMap[6][7] = {
 
 //seq
 int stp_cnt;
-
-//envelope後でpotにアサイン
+//envelope gaim
 int gain;
-unsigned int attack = 100;
-unsigned int decay = 10;
+//pages
+int valPOT[2][4];
+int pageState0 = 0;
+int pageState1 = 0;
+byte Flag[2][4];
 
 void setup(){
   startMozzi(CONTROL_RATE);
-  kDelay.start(250); 
+  kDelay.start(250);
+ lpf.setResonance(0);
   Serial.begin(9600);
   
 }
@@ -69,29 +69,145 @@ void updateControl() {
   pinMode(STEP_6,OUTPUT);
   pinMode(STEP_7,OUTPUT);
   pinMode(STEP_8,OUTPUT);
-  pinMode(SYNC_IN,INPUT);
- 
+  pinMode(SWITCH1,INPUT);
+
+//if(digitalRead(SWITCH2) == HIGH){//ピン未宣言
   //シンクイン途中
-  if(mozziAnalogRead(SYNC_IN) >4){
+//  if(mozziAnalogRead(A5) >4){
     //stp_cnt++;
+//  }
+
+
+// from step to A4
+int  tmp_read = map(mozziAnalogRead(A4),0, 1023, 0, 6);
+
+if(digitalRead(SWITCH1) == LOW){
+      pageState0 = 1;
+    }else{
+      pageState1 = 1;
+    }
+
+//page1
+if(pageState0 == 1){
+
+  if(Flag[0][0] == 0){
+    if(valPOT[0][0] == map(mozziAnalogRead(A0),0,1023,0,500)){//bpm
+    Flag[0][0] = 1;
+    }
+  }else{
+    valPOT[0][0] = map(mozziAnalogRead(A0),0,1023,0,500);
   }
+
+  if(Flag[0][1] == 0){
+    if(valPOT[0][1] == map(mozziAnalogRead(A1),0,1023,0,16)){//step
+    Flag[0][1] = 1;
+    }
+  }else{
+    valPOT[0][1] = map(mozziAnalogRead(A1),0,1023,0,16);
+  }
+
+if(Flag[0][2] == 0){
+    if(valPOT[0][2] == map(mozziAnalogRead(A2),0,1023,0,2550)){//decay
+    Flag[0][2] = 1;
+    }
+  }else{
+    valPOT[0][2] = map(mozziAnalogRead(A2),0,1023,0,2550);
+  }
+
+if(Flag[0][3] == 0){
+    if(valPOT[0][3] == map(mozziAnalogRead(A3),0, 1023, 0, 255)){//filter
+    Flag[0][3] = 1;
+    }
+  }else{
+    valPOT[0][3] = map(mozziAnalogRead(A3),0, 1023, 10, 255);
+  }
+
+  pageState0 = 0;
   
-//scale
-uint8_t  tmp_scale = map(mozziAnalogRead(SCALE_SELECTOR),0, 1023, 0, 5);    
+} else {
+  for(int i =0; i<4; i++){
+  Flag[0][i] = 0;
+  }
+}
+
 //BPM
-uint16_t tmp_bpm = map(mozziAnalogRead(FUNC_SELECTOR),0,1023,0,500);
-kDelay.set(tmp_bpm);
-// 各ステップからanalogread(A4)に流れてくるとこ
-uint16_t  tmp_read = map(mozziAnalogRead(SYNC_CONTROL),0, 1023, 0, 6);
+int tmp_bpm = valPOT[0][0];
+
+//step_num
+int stp_num = valPOT[0][1];
+
+//step_num揺らぎ軽減
+if (stp_num >= 14 || stp_num < 16){
+    stp_num++;
+}
+
+//page2
+if(pageState1 == 1){
+
+  if(Flag[1][0] == 0){
+    if(valPOT[1][0] == map(mozziAnalogRead(A0),0,1023,0,5)){//scale
+    Flag[1][0] = 1;
+    }
+  }else{
+    valPOT[1][0] = map(mozziAnalogRead(A0),0,1023,0,5);
+  }
+
+  if(Flag[1][1] == 0){
+    if(valPOT[1][1] == map(mozziAnalogRead(A1),0,1023,0,255)){//未設定
+    Flag[1][1] = 1;
+    }
+  }else{
+    valPOT[1][1] = map(mozziAnalogRead(A1),0,1023,0,255);
+  }
+
+  if(Flag[1][2] == 0){
+    if(valPOT[1][2] == map(mozziAnalogRead(A1),0,1023,0,255)){//未設定
+    Flag[1][2] = 1;
+    }
+  }else{
+    valPOT[1][2] = map(mozziAnalogRead(A1),0,1023,0,255);
+  }
+
+  if(Flag[1][3] == 0){
+    if(valPOT[1][3] == map(mozziAnalogRead(A1),0,1023,0,255)){//未設定
+    Flag[1][3] = 1;
+    }
+  }else{
+    valPOT[1][3] = map(mozziAnalogRead(A1),0,1023,0,255);
+  }
+
+  pageState1 = 0;
+  
+} else {
+  for(int i =0; i<4; i++){
+  Flag[1][i] = 0;
+  }
+}
+
+//scale
+//  tmp_scale = map(valPOT[0][1],0,1023,0,5);
+int tmp_scale = valPOT[1][0];
+
+unsigned int attack = 10;
+// decay = map(valPOT[1][1],0,1023,0,255);
+unsigned int decay = valPOT[0][2];
+
+
 
 aSin.setFreq(mtof(scaleMap[tmp_scale][tmp_read]));
 
- gain = (int) kEnvelope.next(); //各ステップからtemp_read通って出てきたところでnext
+gain = (int) kEnvelope.next(); //各ステップからaSin通って出てきたところでnext
+
+//Filter
+byte cutoff_freq = valPOT[0][3];
+  lpf.setCutoffFreq(cutoff_freq);
+
+
 
 digitalWrite(SYNC_OUT, LOW);
 
 if(kDelay.ready()){
-  if(stp_cnt <= 7){
+  if(stp_cnt < stp_num){
    switch(stp_cnt){
     case  0:
 digitalWrite(STEP_1, HIGH);
@@ -103,12 +219,12 @@ digitalWrite(STEP_6, LOW);
 digitalWrite(STEP_7, LOW);
 digitalWrite(STEP_8, LOW);
 digitalWrite(SYNC_OUT, HIGH);
-if(kDelay.ready()){
-    kEnvelope.start(attack,decay); //エンベロープスタート
-    kDelay.start(STEP_1 == HIGH); //トリガー
-  }
+    kEnvelope.start(attack,decay);
       break;
-    case  1:
+      case  1:
+      digitalWrite(SYNC_OUT, HIGH);
+      break;
+    case  2:
 digitalWrite(STEP_1, LOW);
 digitalWrite(STEP_2, HIGH);
 digitalWrite(STEP_3, LOW);
@@ -118,12 +234,12 @@ digitalWrite(STEP_6, LOW);
 digitalWrite(STEP_7, LOW);
 digitalWrite(STEP_8, LOW);
 digitalWrite(SYNC_OUT, HIGH);
-if(kDelay.ready()){
-    kEnvelope.start(attack,decay); //エンベロープスタート
-    kDelay.start(STEP_2 == HIGH); //トリガー
-  }
+    kEnvelope.start(attack,decay);
       break;
-    case  2:
+      case  3:
+      digitalWrite(SYNC_OUT, HIGH);
+      break;
+    case  4:
 digitalWrite(STEP_1, LOW);
 digitalWrite(STEP_2, LOW);
 digitalWrite(STEP_3, HIGH);
@@ -133,12 +249,12 @@ digitalWrite(STEP_6, LOW);
 digitalWrite(STEP_7, LOW);
 digitalWrite(STEP_8, LOW);
 digitalWrite(SYNC_OUT, HIGH);
-if(kDelay.ready()){
     kEnvelope.start(attack,decay); //エンベロープスタート
-    kDelay.start(STEP_3 == HIGH); //トリガー
-  }
       break;
-    case  3:
+      case  5:
+      digitalWrite(SYNC_OUT, HIGH);
+      break;
+    case  6:
 digitalWrite(STEP_1, LOW);
 digitalWrite(STEP_2, LOW);
 digitalWrite(STEP_3, LOW);
@@ -148,12 +264,12 @@ digitalWrite(STEP_6, LOW);
 digitalWrite(STEP_7, LOW);
 digitalWrite(STEP_8, LOW);
 digitalWrite(SYNC_OUT, HIGH);
-if(kDelay.ready()){
-    kEnvelope.start(attack,decay); //エンベロープスタート
-    kDelay.start(STEP_4 == HIGH); //トリガー
-  }
+    kEnvelope.start(attack,decay);
       break;
-    case  4:
+      case  7:
+      digitalWrite(SYNC_OUT, HIGH);
+      break;
+    case  8:
 digitalWrite(STEP_1, LOW);
 digitalWrite(STEP_2, LOW);
 digitalWrite(STEP_3, LOW);
@@ -163,12 +279,12 @@ digitalWrite(STEP_6, LOW);
 digitalWrite(STEP_7, LOW);
 digitalWrite(STEP_8, LOW);
 digitalWrite(SYNC_OUT, HIGH);
-if(kDelay.ready()){
-    kEnvelope.start(attack,decay); //エンベロープスタート
-    kDelay.start(STEP_5 == HIGH); //トリガー
-  }
+kEnvelope.start(attack,decay);
       break;
-    case  5:
+      case  9:
+      digitalWrite(SYNC_OUT, HIGH);
+      break;
+    case  10:
 digitalWrite(STEP_1, LOW);
 digitalWrite(STEP_2, LOW);
 digitalWrite(STEP_3, LOW);
@@ -178,12 +294,12 @@ digitalWrite(STEP_6, HIGH);
 digitalWrite(STEP_7, LOW);
 digitalWrite(STEP_8, LOW);
 digitalWrite(SYNC_OUT, HIGH);
-if(kDelay.ready()){
-    kEnvelope.start(attack,decay); //エンベロープスタート
-    kDelay.start(STEP_6 == HIGH); //トリガー
-  }
+    kEnvelope.start(attack,decay);
       break;
-    case  6:
+      case  11:
+      digitalWrite(SYNC_OUT, HIGH);
+      break;
+    case  12:
 digitalWrite(STEP_1, LOW);
 digitalWrite(STEP_2, LOW);
 digitalWrite(STEP_3, LOW);
@@ -193,12 +309,12 @@ digitalWrite(STEP_6, LOW);
 digitalWrite(STEP_7, HIGH);
 digitalWrite(STEP_8, LOW);
 digitalWrite(SYNC_OUT, HIGH);
-if(kDelay.ready()){
-    kEnvelope.start(attack,decay); //エンベロープスタート
-    kDelay.start(STEP_7 == HIGH); //トリガー
-  }
+    kEnvelope.start(attack,decay);
       break;
-    case  7:
+case  13:
+      digitalWrite(SYNC_OUT, HIGH);
+      break;
+    case  14:
 digitalWrite(STEP_1, LOW);
 digitalWrite(STEP_2, LOW);
 digitalWrite(STEP_3, LOW);
@@ -208,10 +324,10 @@ digitalWrite(STEP_6, LOW);
 digitalWrite(STEP_7, LOW);
 digitalWrite(STEP_8, HIGH);
 digitalWrite(SYNC_OUT, HIGH);
-if(kDelay.ready()){
-    kEnvelope.start(attack,decay); //エンベロープスタート
-    kDelay.start(STEP_8 == HIGH); //トリガー
-  }
+    kEnvelope.start(attack,decay);
+      break;
+      case  15:
+      digitalWrite(SYNC_OUT, HIGH);
       break;
 
     }
@@ -226,11 +342,16 @@ if(kDelay.ready()){
  
 
 //Serial.print("bpm: ");
-//  Serial.println(digitalRead(SYNC_OUT));
+//  Serial.println(mozziAnalogRead(A0));
+    Serial.println(valPOT[0][3]);
+  Serial.println(map(mozziAnalogRead(A3),0, 1023, 10, 255));
+//  Serial.println(Flag[0]);
+//  Serial.println(valPOT[1][0]);
 }
 
 int updateAudio(){
-return (gain*aSin.next())>>8; //ゲインを掛けてビットシフト
+int asig = gain*(lpf.next(aSin.next()))>>8;
+return (int) asig;
 }
 
 void loop(){
