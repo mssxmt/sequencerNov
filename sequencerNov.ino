@@ -81,11 +81,7 @@ void setup(){
   startMozzi(CONTROL_RATE);
   kDelay.start(250);
   lpf.setResonance(10);
-  Serial.begin(9600);
-  
-}
-
-void updateControl() {
+  //Serial.begin(9600);
   pinMode(SYNC_OUT,OUTPUT);
   pinMode(STEP_1,OUTPUT);
   pinMode(STEP_2,OUTPUT);
@@ -95,9 +91,11 @@ void updateControl() {
   pinMode(STEP_6,OUTPUT);
   pinMode(STEP_7,OUTPUT);
   pinMode(STEP_8,OUTPUT);
-  pinMode(SWITCH1,INPUT);   
+  pinMode(SWITCH1,INPUT); 
+}
 
-
+void updateControl() {
+  
 // from step to A4
 int  tmp_read = map(mozziAnalogRead(A4),0, 1023, 0, 6);
 
@@ -120,9 +118,8 @@ if(pageState0 == 1){
       }
     }
     pageState0 = 0;
-  }else{
     for(int i=0; i<4; i++){
-      Flag[0][i] = 0;
+      Flag[1][i] = 0;
     }
   }
 
@@ -149,9 +146,8 @@ if(pageState1 == 1){
       }
     }
     pageState1 = 0;
-  }else{
     for(int i=0; i<4; i++){
-      Flag[1][i] = 0;
+      Flag[0][i] = 0;
     }
   }
 
@@ -272,7 +268,7 @@ aSqu2.setFreq(mtof(scaleMap[tmp_scale][tmp_read]));
 gain = (int) kEnvelope.next(); //各ステップからaSin通って出てきたところでnext
 
 //Filter
-byte cutoff_freq = map(valNob[0][3],0, 1023, 10, 255);
+uint8_t cutoff_freq = map(valNob[0][3],0, 1023, 10, 255);
   lpf.setCutoffFreq(cutoff_freq);
 
 
