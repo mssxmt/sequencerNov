@@ -9,6 +9,8 @@
 #include <tables/square_no_alias_2048_int8.h>
 #include <LowPassFilter.h>
 #include <Line.h>
+#include <EventDelay.h>
+#include <Portamento.h>
 
 
 Oscil <SIN2048_NUM_CELLS, AUDIO_RATE> aSin(SIN2048_DATA);
@@ -26,14 +28,16 @@ Oscil <TRIANGLE2048_NUM_CELLS, CONTROL_RATE> aTri3(TRIANGLE2048_DATA);
 Oscil <SAW2048_NUM_CELLS, CONTROL_RATE> aSaw3(SAW2048_DATA);
 Oscil <SQUARE_NO_ALIAS_2048_NUM_CELLS, CONTROL_RATE> aSqu3(SQUARE_NO_ALIAS_2048_DATA);
 
+Portamento <CONTROL_RATE>aPortamento;
+
 Line <unsigned int> aLfo;
 
 LowPassFilter lpf;
 
 #define CONTROL_RATE 128
 
-#include <EventDelay.h>
 EventDelay kDelay;
+
 Ead kEnvelope(CONTROL_RATE);
 
 
@@ -49,8 +53,9 @@ Ead kEnvelope(CONTROL_RATE);
 #define  STEP_8            4
 #define  SWITCH1           3
 #define  SYNC_IN           2
+//#define  SWITCH2           19
 
-int scaleMap[6][7] = {
+uint8_t scaleMap[6][7] = {
   {60, 62, 64, 65, 67, 69, 71}, //major
   {60, 62, 63, 65, 67, 69, 70}, //dorian
   {60, 62, 64, 67, 69, 72, 74}, //penta
@@ -60,51 +65,56 @@ int scaleMap[6][7] = {
 };
 
 int tmp_read;
-int tmp_bpm = 120;
-int stp_tmp = 8;
-int stp_num;
-int tmp_scale;
-unsigned int attack;
-unsigned int decay = 3000;
+int tmp_bpm = 0;
+int stp_tmp = 0;
+int stp_num = 0;
+int tmp_scale = 0;
+unsigned int attack = 0;
+unsigned int decay = 0;
 //seq
 int stp_cnt;
 //envelope gaim
 int gain;
 //pages
 int const nob[4] = {A0,A1,A2,A3};
-
-int valNob[2][4] = {
-  {0,0,0,0},
-  {50,50,0,0}
+int realNob[3][4];
+int valNob[3][4] = {
+  {30,200,10,3000},
+  {50,50,0,26},
+  {500,8,0,10}
 };
-int pageState0 = 0;
-int pageState1 = 0;
-byte Flag[2][4] = {
+int pageState[3] = {0,0,0};
+byte Flag[3][4] = {
+  {0,0,0,0},
   {0,0,0,0},
   {0,0,0,0}
 };
 
 //vco
-int curve[3][6];
-int input[3] = {0,0,0};
-int sinGain[3];
-int triGain[3];
-int sawGain[3];
-int squGain[3];
+int curve[2][6];
+int input[2] = {0,0};
+int sinGain[2];
+int triGain[2];
+int sawGain[2];
+int squGain[2];
 
+uint8_t Reso = 0;
+uint8_t cutoff_freq = 0;
 
-int Lfo_rate = 26;
+unsigned int PortT = 0;
+
+int Lfo_rate = 0;
 int Lfo_s;
 int Lfo_form = 0;
+unsigned int Lfo;
 
-unsigned long syncin;
+unsigned long syncIn;
 unsigned long time1;
 unsigned long time2;
 
 void setup(){
   startMozzi(CONTROL_RATE);
   kDelay.start(250);
-  lpf.setResonance(200);
   Serial.begin(9600);
   pinMode(SYNC_OUT,OUTPUT);
   pinMode(STEP_1,OUTPUT);
@@ -116,88 +126,108 @@ void setup(){
   pinMode(STEP_7,OUTPUT);
   pinMode(STEP_8,OUTPUT);
   pinMode(SWITCH1,INPUT);
+//  pinMode(SWITCH2,INPUT);
   pinMode(SYNC_IN,INPUT);  
 }
 
 void updateControl() {  
 
-// from step to A4
-tmp_read = map(mozziAnalogRead(A4),0, 1023, 0, 6);
 
 //pageSwitcher
-if(digitalRead(SWITCH1) == LOW){
-      pageState0 = 1;
-    }else{
-      pageState1 = 1;
-    }
+int SWITCH2 = mozziAnalogRead(A5);
+
+if((digitalRead(SWITCH1) == LOW) && (SWITCH2 < 800)){
+      pageState[0] = 1;
+  }else if((digitalRead(SWITCH1) == HIGH) && (SWITCH2 < 800)){
+    pageState[1] = 1;
+  }else if((digitalRead(SWITCH1) == LOW) && (SWITCH2 > 800)){
+  pageState[2] = 1;
+  }else if((digitalRead(SWITCH1) == HIGH) && (SWITCH2 > 800)){
+  pageState[2] = 1;
+  }
+
+for(int i=0; i<4; i++){
+    realNob[0][i] = map(mozziAnalogRead(nob[i]),0,1023,0,1023);
+    realNob[1][i] = map(mozziAnalogRead(nob[i]),0,1023,0,1023);
+    realNob[2][i] = map(mozziAnalogRead(nob[i]),0,1023,0,1023);
+}
 
 //page1
-if(pageState0 == 1){
+if(pageState[0] == 1){
     for(int i=0; i<4; i++){
       if(Flag[0][i] == 0){
-      if(valNob[0][i] == map(mozziAnalogRead(nob[i]),0,1023,0,1023)){
+      if(valNob[0][i] == realNob[0][i]){
       Flag[0][i] = 1;
         }
       }else{
-        valNob[0][i] = map(mozziAnalogRead(nob[i]),0,1023,0,1023);
+        valNob[0][i] = realNob[0][i];
       }
     }
-    pageState0 = 0;
+    pageState[0] = 0;
     for(int i=0; i<4; i++){
+      Flag[1][i] = 0;
+      Flag[2][i] = 0;
+    }
+}
+
+//page2
+if(pageState[1] == 1){
+    for(int i=0; i<4; i++){
+      if(Flag[1][i] == 0){
+      if(valNob[1][i] == realNob[1][i]){
+      Flag[1][i] = 1;
+        }
+      }else{
+        valNob[1][i] = realNob[1][i];
+      }
+    }
+    pageState[1] = 0;
+    for(int i=0; i<4; i++){
+      Flag[0][i] = 0;
+      Flag[2][i] = 0;
+    }
+}
+
+//page3
+if(pageState[2] == 1){
+    for(int i=0; i<4; i++){
+      if(Flag[2][i] == 0){
+      if(valNob[2][i] == realNob[2][i]){
+      Flag[2][i] = 1;
+        }
+      }else{
+        valNob[2][i] = realNob[2][i];
+      }
+    }
+    pageState[2] = 0;
+    for(int i=0; i<4; i++){
+      Flag[0][i] = 0;
       Flag[1][i] = 0;
     }
 }
 
 //BPM
-tmp_bpm = 30000/map(valNob[0][0],0,1023,1,600);
+tmp_bpm = 30000/map(valNob[2][0],0,1023,1,600);
 //_bpm = 1/tmp_bpm*60000
-//step_num
-stp_tmp = map(valNob[0][1],0,1023,1,12);
+stp_tmp = map(valNob[2][1],0,1023,1,12);
 
-//step_num揺らぎ軽減
-//if(stp_tmp % 2 == 0 && stp_tmp <= 13){
-//    stp_num = stp_tmp++;
-//}
 if(stp_tmp >= 8){
   stp_num = 8;
 }else{
   stp_num = stp_tmp;
 }
-//if(stp_tmp <= 1){
-//  stp_num = 2;
-//}
-
-//page2
-if(pageState1 == 1){
-    for(int i=0; i<4; i++){
-      if(Flag[1][i] == 0){
-      if(valNob[1][i] == map(mozziAnalogRead(nob[i]),0,1023,0,1023)){
-      Flag[1][i] = 1;
-        }
-      }else{
-        valNob[1][i] = map(mozziAnalogRead(nob[i]),0,1023,0,1023);
-      }
-    }
-    pageState1 = 0;
-    for(int i=0; i<4; i++){
-      Flag[0][i] = 0;
-    }
-}
 
 //scale
-tmp_scale = map(valNob[1][0],0,1023,0,5);
+tmp_scale = map(valNob[2][2],0,1023,0,5);
 
-//AD(noSR)
-attack = 10;
-decay = map(valNob[0][2],0,1023,0,5000);
-
-  input[0] = map(valNob[1][1],0,1023,0,1023);
-  curve[0][0] = map(valNob[1][1], 0, 341, 100, 0);
-  curve[0][1] = map(valNob[1][1], 0, 341, 0, 100);
-  curve[0][2] = map(valNob[1][1], 342, 682, 100, 0);
-  curve[0][3] = map(valNob[1][1], 342, 682, 0, 100);
-  curve[0][4] = map(valNob[1][1], 683, 1023, 100, 0);
-  curve[0][5] = map(valNob[1][1], 683, 1023, 0, 100);
+//VCO
+  input[0] = map(valNob[1][0],0,1023,0,1023);
+  curve[0][0] = map(valNob[1][0], 0, 341, 100, 0);
+  curve[0][1] = map(valNob[1][0], 0, 341, 0, 100);
+  curve[0][2] = map(valNob[1][0], 342, 682, 100, 0);
+  curve[0][3] = map(valNob[1][0], 342, 682, 0, 100);
+  curve[0][4] = map(valNob[1][0], 683, 1023, 100, 0);
+  curve[0][5] = map(valNob[1][0], 683, 1023, 0, 100);
  
   if((0<=input[0])&&(input[0]<342)){
       sinGain[0] = curve[0][0];
@@ -231,13 +261,13 @@ decay = map(valNob[0][2],0,1023,0,5000);
       squGain[0] = 0;
   }
 
-  input[1] = map(valNob[1][2],0,1023,0,1023);
-  curve[1][0] = map(valNob[1][2], 0, 341, 100, 0);
-  curve[1][1] = map(valNob[1][2], 0, 341, 0, 100);
-  curve[1][2] = map(valNob[1][2], 342, 682, 100, 0);
-  curve[1][3] = map(valNob[1][2], 342, 682, 0, 100);
-  curve[1][4] = map(valNob[1][2], 683, 1023, 100, 0);
-  curve[1][5] = map(valNob[1][2], 683, 1023, 0, 100);
+  input[1] = map(valNob[1][1],0,1023,0,1023);
+  curve[1][0] = map(valNob[1][1], 0, 341, 100, 0);
+  curve[1][1] = map(valNob[1][1], 0, 341, 0, 100);
+  curve[1][2] = map(valNob[1][1], 342, 682, 100, 0);
+  curve[1][3] = map(valNob[1][1], 342, 682, 0, 100);
+  curve[1][4] = map(valNob[1][1], 683, 1023, 100, 0);
+  curve[1][5] = map(valNob[1][1], 683, 1023, 0, 100);
  
   if((0<=input[1])&&(input[1]<342)){
       sinGain[1] = curve[1][0];
@@ -270,8 +300,8 @@ decay = map(valNob[0][2],0,1023,0,5000);
   }else if(input[1]<682){
       squGain[1] = 0;
   }
-
-Lfo_rate = map(mozziAnalogRead(A5),0, 1023, 25, 55);//後で変更する
+// from step to A4
+tmp_read = map(mozziAnalogRead(A4),0, 1023, 0, 6);
   
 aSin.setFreq(mtof(scaleMap[tmp_scale][tmp_read]));
 aTri.setFreq(mtof(scaleMap[tmp_scale][tmp_read]));
@@ -283,12 +313,31 @@ aTri2.setFreq(mtof(scaleMap[tmp_scale][tmp_read]));
 aSaw2.setFreq(mtof(scaleMap[tmp_scale][tmp_read]));
 aSqu2.setFreq(mtof(scaleMap[tmp_scale][tmp_read]));
 
+PortT = map(valNob[0][3],0, 1023, 0, 200);
+if (PortT > 10){
+  aPortamento.setTime(PortT);
+aPortamento.start(scaleMap[tmp_scale][tmp_read]);
+aSin.setFreq_Q16n16(aPortamento.next());
+aTri.setFreq_Q16n16(aPortamento.next());
+aSaw.setFreq_Q16n16(aPortamento.next());
+aSqu.setFreq_Q16n16(aPortamento.next());
+
+aSin2.setFreq_Q16n16(aPortamento.next());
+aTri2.setFreq_Q16n16(aPortamento.next());
+aSaw2.setFreq_Q16n16(aPortamento.next());
+aSqu2.setFreq_Q16n16(aPortamento.next());
+}
+
+
+//LFO
+Lfo_rate = map(valNob[1][3],0, 1023, 25, 55);
+
 aSin3.setFreq(Lfo_rate);
 aTri3.setFreq(Lfo_rate);
 aSaw3.setFreq(Lfo_rate);
 aSqu3.setFreq(Lfo_rate);
 
-Lfo_form = map(valNob[1][3],0,1023,0,4);
+Lfo_form = map(valNob[1][2],0,1023,0,4);
 
 switch(Lfo_form){
   case 0:
@@ -305,13 +354,19 @@ switch(Lfo_form){
   break;
 }
 
-unsigned int Lfo = (128u + aSin3.next())<<8;
+Lfo = (128u + aSin3.next())<<8;
 aLfo.set(Lfo, AUDIO_RATE / CONTROL_RATE);
+
+//AD(noSR)
+attack = map(valNob[0][2],0,1023,10,100);
+decay = map(valNob[0][3],0,1023,0,5000);
 
 gain = (int) kEnvelope.next(); //各ステップからaSin通って出てきたところでnext
 
 //Filter
-uint8_t cutoff_freq = map(valNob[0][3],0, 1023, 30, 255);
+Reso = map(valNob[0][1],0, 1023, 0, 255);
+  lpf.setResonance(Reso);
+cutoff_freq = map(valNob[0][0],0, 1023, 30, 255);
   lpf.setCutoffFreq(cutoff_freq);
 
 
@@ -330,7 +385,6 @@ if(kDelay.ready()){
       digitalWrite(STEP_7, LOW);
       digitalWrite(STEP_8, LOW);
       digitalWrite(SYNC_OUT, HIGH);
-//      kEnvelope.start(attack,decay);
     break;
     case  1:
       digitalWrite(STEP_1, LOW);
@@ -342,7 +396,6 @@ if(kDelay.ready()){
       digitalWrite(STEP_7, LOW);
       digitalWrite(STEP_8, LOW);
       digitalWrite(SYNC_OUT, HIGH);
-//      kEnvelope.start(attack,decay);
     break;
     case  2:
       digitalWrite(STEP_1, LOW);
@@ -354,7 +407,6 @@ if(kDelay.ready()){
       digitalWrite(STEP_7, LOW);
       digitalWrite(STEP_8, LOW);
       digitalWrite(SYNC_OUT, HIGH);
-//      kEnvelope.start(attack,decay);
     break;
     case  3:
       digitalWrite(STEP_1, LOW);
@@ -378,7 +430,6 @@ if(kDelay.ready()){
       digitalWrite(STEP_7, LOW);
       digitalWrite(STEP_8, LOW);
       digitalWrite(SYNC_OUT, HIGH);
-//      kEnvelope.start(attack,decay);
     break;
     case  5:
       digitalWrite(STEP_1, LOW);
@@ -390,7 +441,6 @@ if(kDelay.ready()){
       digitalWrite(STEP_7, LOW);
       digitalWrite(STEP_8, LOW);
       digitalWrite(SYNC_OUT, HIGH);
-//      kEnvelope.start(attack,decay);
     break;
     case  6:
       digitalWrite(STEP_1, LOW);
@@ -402,7 +452,6 @@ if(kDelay.ready()){
       digitalWrite(STEP_7, HIGH);
       digitalWrite(STEP_8, LOW);
       digitalWrite(SYNC_OUT, HIGH);
-//      kEnvelope.start(attack,decay);
     break;
     case  7:
       digitalWrite(STEP_1, LOW);
@@ -414,7 +463,6 @@ if(kDelay.ready()){
       digitalWrite(STEP_7, LOW);
       digitalWrite(STEP_8, HIGH);
       digitalWrite(SYNC_OUT, HIGH);
-//      kEnvelope.start(attack,decay);
     break;
     }
     if(tmp_bpm < 400){
@@ -430,6 +478,38 @@ if(kDelay.ready()){
 //time2 = mozziMicros();
 time1  = pulseIn(SYNC_IN, HIGH);
 time2  = pulseIn(SYNC_IN, LOW);
+syncIn = time2/1000 + time1/100;
+kDelay.start(syncIn);
+stp_cnt++;
+kEnvelope.start(attack,decay);
+      
+    }
+  }else{
+    stp_cnt = 0;
+  }
+  }
+//Serial.print("bpm: ");
+//  Serial.println(pageState[0]);
+//    Serial.println(map(valNob[0][1],0,1023,0,16));
+//  Serial.println(PortT);
+  Serial.println(mozziAnalogRead(A3));
+//  Serial.println(valNob[2][2]);
+}
+
+int updateAudio(){
+int asig = gain*(lpf.next(((aSin.next()*sinGain[0]+aTri.next()*triGain[0]+aSaw.next()*sawGain[0]+aSqu.next()*squGain[0])>>2)>>8))>>6;
+int asig2 = gain*(lpf.next(((aSin2.next()*sinGain[1]+aTri2.next()*triGain[1]+aSaw2.next()*sawGain[1]+aSqu2.next()*squGain[1])>>2)>>8))>>6;
+int master = (asig + asig2)>>2;
+if (Lfo_rate > 30){
+return (int)((long)((long) master * aLfo.next()) >> 16);
+}
+return (int) master;
+
+}
+
+void loop(){
+  audioHook();
+}ime2  = pulseIn(SYNC_IN, LOW);
 syncin = time2/1000 + time1/100;
 kDelay.start(syncin);
 stp_cnt++;
