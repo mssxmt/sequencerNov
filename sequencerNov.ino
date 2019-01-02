@@ -137,19 +137,17 @@ void updateControl() {
 int SWITCH2 = mozziAnalogRead(A5);
 
 if((digitalRead(SWITCH1) == LOW) && (SWITCH2 < 800)){
-      pageState[0] = 1;
-  }else if((digitalRead(SWITCH1) == HIGH) && (SWITCH2 < 800)){
-    pageState[1] = 1;
-  }else if((digitalRead(SWITCH1) == LOW) && (SWITCH2 > 800)){
-  pageState[2] = 1;
-  }else if((digitalRead(SWITCH1) == HIGH) && (SWITCH2 > 800)){
-  pageState[2] = 1;
-  }
+pageState[0] = 1;
+}else if((digitalRead(SWITCH1) == HIGH) && (SWITCH2 < 800)){
+pageState[1] = 1;
+}else if(((digitalRead(SWITCH1) == LOW) && (SWITCH2 > 800))||((digitalRead(SWITCH1) == HIGH) && (SWITCH2 > 800))){
+pageState[2] = 1;
+}
 
 for(int i=0; i<4; i++){
-    realNob[0][i] = map(mozziAnalogRead(nob[i]),0,1023,0,1023);
-    realNob[1][i] = map(mozziAnalogRead(nob[i]),0,1023,0,1023);
-    realNob[2][i] = map(mozziAnalogRead(nob[i]),0,1023,0,1023);
+    realNob[0][i] = mozziAnalogRead(nob[i]);
+    realNob[1][i] = mozziAnalogRead(nob[i]);
+    realNob[2][i] = mozziAnalogRead(nob[i]);
 }
 
 //page1
@@ -501,38 +499,6 @@ int asig = gain*(lpf.next(((aSin.next()*sinGain[0]+aTri.next()*triGain[0]+aSaw.n
 int asig2 = gain*(lpf.next(((aSin2.next()*sinGain[1]+aTri2.next()*triGain[1]+aSaw2.next()*sawGain[1]+aSqu2.next()*squGain[1])>>2)>>8))>>6;
 int master = (asig + asig2)>>2;
 if (Lfo_rate > 30){
-return (int)((long)((long) master * aLfo.next()) >> 16);
-}
-return (int) master;
-
-}
-
-void loop(){
-  audioHook();
-}ime2  = pulseIn(SYNC_IN, LOW);
-syncin = time2/1000 + time1/100;
-kDelay.start(syncin);
-stp_cnt++;
-kEnvelope.start(attack,decay);
-      
-    }
-  }else{
-    stp_cnt = 0;
-  }
-  }
-//Serial.print("bpm: ");
-//  Serial.println(time2);
-//    Serial.println(map(valNob[0][1],0,1023,0,16));
-//  Serial.println(time1);
-//  Serial.println(mozziAnalogRead(A5));
-  Serial.println(preMaster1);
-}
-
-int updateAudio(){
-int asig = gain*(lpf.next(((aSin.next()*sinGain[0]+aTri.next()*triGain[0]+aSaw.next()*sawGain[0]+aSqu.next()*squGain[0])>>2)>>8))>>6;
-int asig2 = gain*(lpf.next(((aSin2.next()*sinGain[1]+aTri2.next()*triGain[1]+aSaw2.next()*sawGain[1]+aSqu2.next()*squGain[1])>>2)>>8))>>6;
-int master = (asig + asig2)>>2;
-if (preMaster1 > 30){ //LFO is ON
 return (int)((long)((long) master * aLfo.next()) >> 16);
 }
 return (int) master;
