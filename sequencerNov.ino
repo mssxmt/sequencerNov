@@ -7,12 +7,14 @@
 #include <tables/triangle2048_int8.h>
 #include <tables/saw2048_int8.h>
 #include <tables/square_no_alias_2048_int8.h>
+#include <tables/pinknoise8192_int8.h>
 #include <LowPassFilter.h>
 #include <Line.h>
 #include <EventDelay.h>
 #include <Portamento.h>
 #include <Smooth.h>
 
+Oscil <PINKNOISE8192_NUM_CELLS, AUDIO_RATE> aNoise(PINKNOISE8192_DATA);
 
 Oscil <SIN2048_NUM_CELLS, AUDIO_RATE> aSin(SIN2048_DATA);
 Oscil <TRIANGLE2048_NUM_CELLS, AUDIO_RATE> aTri(TRIANGLE2048_DATA);
@@ -35,11 +37,11 @@ Line <unsigned int> aLfo;
 
 LowPassFilter lpf;
 
-#define CONTROL_RATE 64
+#define CONTROL_RATE 128
 
 EventDelay kDelay;
 
-float smoothness = 0.9975f;
+float smoothness = 0.9970f;
 Smooth <long> aSmoothGain(smoothness);
 
 Ead kEnvelope(CONTROL_RATE);
@@ -123,6 +125,7 @@ int Lfo_rate = 0;
 int Lfo_s;
 int Lfo_form = 0;
 unsigned int Lfo;
+int noiseGain;
 //syncin
 unsigned long syncIn;
 unsigned long time1;
@@ -250,34 +253,37 @@ if(pageState[3] == 1){
 
 
 //page1
-input[0] = valNob[1][0];//VCO1
-input[1] = valNob[1][1];//VCO2
-Lfo_form = map(valNob[1][2],0,127,0,3);
-Lfo_rate = map(valNob[1][3],0, 127, 25, 55);
-
-//page2
-cutoff_freq = map(valNob[0][0],0, 127, 30, 255);
-Reso = map(valNob[0][1],0, 127, 0, 200);
+//BPM//_bpm = 1/tmp_bpm*60000
+tmp_bpm = 30000/map(valNob[0][0],0,127,10,600);
+stp_tmp = map(valNob[0][1],0,127,1,12);
 attack = map(valNob[0][2],0,127,10,100);
 decay = map(valNob[0][3],0,127,0,4000);
-
-//page3
-//BPM//_bpm = 1/tmp_bpm*60000
-tmp_bpm = 30000/map(valNob[2][0],0,127,10,600);
-stp_tmp = map(valNob[2][1],0,127,1,12);
-tmp_scale = map(valNob[2][2],0,127,0,8);
-PortT = map(valNob[2][3],0, 127, 0, 500);
 if(stp_tmp >= 8){
   stp_num = 8;
 }else{
   stp_num = stp_tmp;
 }
 
-//page4
-keySft = map(valNob[3][0],0,127,0,6);
-Octv = map(valNob[3][1],0,127,0,1);
+//page2
+input[0] = valNob[1][0];//VCO1
+input[1] = valNob[1][1];//VCO2
+Reso = map(valNob[1][2],0, 127, 0, 200);
+cutoff_freq = map(valNob[1][3],0, 127, 30, 255);
+
+
+//page3
+
+tmp_scale = map(valNob[2][0],0,127,0,8);
+keySft = map(valNob[2][1],0,127,0,6);
+Octv = map(valNob[2][2],0,127,0,1);
+PortT = map(valNob[2][3],0, 127, 0, 500);
 Octv *= 12;
+
+//page4
+Lfo_form = map(valNob[3][0],0,127,0,3);
+Lfo_rate = map(valNob[3][1],0, 127, 25, 55);
 Dtn = map(valNob[3][2],0,127,0,50);
+noiseGain = map(valNob[3][3],0,127,0,100);
 
 //VCO
 curve[0][0] = map(valNob[1][0], 0, 42, 100, 0);
@@ -358,16 +364,17 @@ if((85<input[1])&&(input[1]<=127)){
   squGain[1] = 0;
 }
 
-aSin.setFreq(mtof(scaleMap[tmp_scale][tmp_read + Octv + keySft]));
-aTri.setFreq(mtof(scaleMap[tmp_scale][tmp_read + Octv + keySft]));
-aSaw.setFreq(mtof(scaleMap[tmp_scale][tmp_read + Octv + keySft]));
-aSqu.setFreq(mtof(scaleMap[tmp_scale][tmp_read + Octv + keySft]));
+aNoise.setFreq(mtof(scaleMap[tmp_scale][tmp_read]));
 
-aSin2.setFreq((mtof(scaleMap[tmp_scale][tmp_read + Octv + keySft]))+Dtn);
-aTri2.setFreq((mtof(scaleMap[tmp_scale][tmp_read + Octv + keySft]))+Dtn);
-aSaw2.setFreq((mtof(scaleMap[tmp_scale][tmp_read + Octv + keySft]))+Dtn);
-aSqu2.setFreq((mtof(scaleMap[tmp_scale][tmp_read + Octv + keySft]))+Dtn);
+aSin.setFreq(mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft);
+aTri.setFreq(mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft);
+aSaw.setFreq(mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft);
+aSqu.setFreq(mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft);
 
+aSin2.setFreq((mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft)+Dtn);
+aTri2.setFreq((mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft)+Dtn);
+aSaw2.setFreq((mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft)+Dtn);
+aSqu2.setFreq((mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft)+Dtn);
 if (PortT > 10){
   aPortamento.setTime(PortT);
   aPortamento.start(scaleMap[tmp_scale][tmp_read]);
@@ -438,7 +445,7 @@ if(kDelay.ready()){
       digitalWrite(STEP_6, LOW);
       digitalWrite(STEP_7, LOW);
       digitalWrite(STEP_8, LOW);
-//      digitalWrite(SYNC_OUT, HIGH);
+      digitalWrite(SYNC_OUT, LOW);
     break;
     case  2:
       digitalWrite(STEP_1, LOW);
@@ -460,7 +467,7 @@ if(kDelay.ready()){
       digitalWrite(STEP_6, LOW);
       digitalWrite(STEP_7, LOW);
       digitalWrite(STEP_8, LOW);
-//      digitalWrite(SYNC_OUT, HIGH);
+      digitalWrite(SYNC_OUT, LOW);
     break;
     case  4:
       digitalWrite(STEP_1, LOW);
@@ -482,7 +489,7 @@ if(kDelay.ready()){
       digitalWrite(STEP_6, HIGH);
       digitalWrite(STEP_7, LOW);
       digitalWrite(STEP_8, LOW);
-//      digitalWrite(SYNC_OUT, HIGH);
+      digitalWrite(SYNC_OUT, LOW);
     break;
     case  6:
       digitalWrite(STEP_1, LOW);
@@ -504,7 +511,7 @@ if(kDelay.ready()){
       digitalWrite(STEP_6, LOW);
       digitalWrite(STEP_7, LOW);
       digitalWrite(STEP_8, HIGH);
-//      digitalWrite(SYNC_OUT, HIGH);
+      digitalWrite(SYNC_OUT, LOW);
     break;
     }
   if(tmp_bpm < 400){
@@ -517,8 +524,8 @@ if(kDelay.ready()){
     time2  = pulseIn(SYNC_IN, LOW);
     syncIn = time2/1000 + time1/100;
     kDelay.start(syncIn);
-    stp_cnt++;
     kEnvelope.start(attack,decay);
+    stp_cnt++;
     }
   }else{
     stp_cnt = 0;
@@ -549,8 +556,10 @@ if(kDelay.ready()){
 }
 
 int updateAudio(){
-int asig = (aSin.next()*sinGain[0]+aTri.next()*triGain[0]+aSaw.next()*sawGain[0]+aSqu.next()*squGain[0]); 
-int asig2 = (aSin2.next()*sinGain[1]+aTri2.next()*triGain[1]+aSaw2.next()*sawGain[1]+aSqu2.next()*squGain[1]);
+int asig = (aSin.next()*sinGain[0]+aTri.next()*triGain[0]+aSaw.next()*sawGain[0]+aSqu.next()*squGain[0]+aNoise.next()*noiseGain); 
+int asig2 = (aSin2.next()*sinGain[1]+aTri2.next()*triGain[1]+aSaw2.next()*sawGain[1]+aSqu2.next()*squGain[1]+aNoise.next()*noiseGain);
+//int asig = (aSmoothGain.next(sinGain[0])*aSin.next()+aSmoothGain.next(triGain[0])*aTri.next()+aSmoothGain.next(sawGain[0])*aSaw.next()+aSmoothGain.next(squGain[0])*aSqu.next()); 
+//int asig2 = (aSmoothGain.next(sinGain[1])*aSin2.next()+aSmoothGain.next(triGain[1])*aTri2.next()+aSmoothGain.next(sawGain[1])*aSaw2.next()+aSmoothGain.next(squGain[1])*aSqu2.next());
 int premaster1 = asig>>8;
 int premaster2 = asig2>>8;
 int master = (aSmoothGain.next(Evgain)*(lpf.next(premaster1 + premaster2)>>1))>>8;
