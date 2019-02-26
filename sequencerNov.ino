@@ -10,7 +10,7 @@
 #include <tables/pinknoise8192_int8.h>
 #include <LowPassFilter.h>
 #include <Line.h>
-#include <EventDelay.h>
+//#include <EventDelay.h>
 #include <Portamento.h>
 #include <Smooth.h>
 
@@ -37,11 +37,11 @@ Line <unsigned int> aLfo;
 
 LowPassFilter lpf;
 
-#define CONTROL_RATE 128
+#define CONTROL_RATE 64
 
 EventDelay kDelay;
 
-float smoothness = 0.9970f;
+float smoothness = 0.9900f;
 Smooth <long> aSmoothGain(smoothness);
 
 Ead kEnvelope(CONTROL_RATE);
@@ -69,24 +69,14 @@ uint8_t scaleMap[9][22] = {
   {0, 48, 50, 52, 53, 54, 56, 59, 60, 62, 64, 65, 66, 68, 70, 72, 74, 76, 77, 78, 80, 82},//arabic
   {0, 50, 51, 53, 54, 55, 56, 59, 60, 62, 63, 65, 66, 67, 68, 71, 72, 74, 75, 77, 78, 79},//algerian
   {0, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 70, 71, 72, 73, 74}
-//  {0, 48, 51, 53, 55, 59, 60, 63, 60}, //minor penta
-//  {0, 48, 50, 52, 55, 57, 60, 62, 60}, //penta
-//  {0, 48, 50, 51, 53, 55, 56, 59, 60}, //minor
-//  {0, 48, 50, 52, 53, 55, 57, 59, 60}, //major
-//  {0, 48, 50, 51, 53, 55, 57, 59, 60}, //dorian
-//  {0, 48, 49, 52, 53, 55, 56, 59, 60},//gypsy
-//  {0, 48, 50, 52, 53, 54, 56, 59, 60},//arabic
-//  {0, 50, 51, 53, 54, 55, 56, 59, 60},//algerian
-//  {0, 53, 54, 55, 56, 57, 58, 59, 60}
 };
-
 int tmp_read;
 int tmp_bpm = 0;
-int stp_tmp = 8;
-int stp_num = 8;
+int stp_tmp = 0;
+int stp_num = 0;
 int tmp_scale = 0;
-unsigned int attack = 0;
-unsigned int decay = 0;
+unsigned int attack_ms = 10;
+unsigned int decay_ms = 10;
 int stp_cnt = 0;
 int syn_cnt = 0;
 int keySft = 0;
@@ -95,6 +85,7 @@ int Dtn = 0;
 //envelope gaim
 int Evgain;
 //pages
+int SWITCH2;
 int nob0 = 0;
 int nob1 = 1;
 int nob2 = 2;
@@ -117,7 +108,7 @@ int sawGain[2];
 int squGain[2];
 //LPF
 uint8_t Reso = 0;
-uint8_t cutoff_freq = 0;
+uint8_t cutoff_freq = 50;
 //portamento
 unsigned int PortT = 0;
 //LFO
@@ -125,7 +116,7 @@ int Lfo_rate = 0;
 int Lfo_s;
 int Lfo_form = 0;
 unsigned int Lfo;
-int noiseGain;
+int noiseGain = 0;
 //syncin
 unsigned long syncIn;
 unsigned long time1;
@@ -136,7 +127,7 @@ unsigned long time2;
 void setup(){
   startMozzi(CONTROL_RATE);
   kDelay.start(250);
-//  Serial.begin(115200);
+  Serial.begin(115200);
   pinMode(SYNC_OUT,OUTPUT);
   pinMode(STEP_1,OUTPUT);
   pinMode(STEP_2,OUTPUT);
@@ -154,10 +145,9 @@ void setup(){
 void updateControl() {  
 
 //pageSwitcher
-int SWITCH2 = mozziAnalogRead(A5);
+SWITCH2 = mozziAnalogRead(A5);
 //tmp_read = map(mozziAnalogRead(A4),0, 1023, 0, 21);
 tmp_read = map(mozziAnalogRead(A4),0, 1023, 0, 15);
-//tmp_read = (tmp_read + Octv + keySft);
 if((digitalRead(SWITCH1) == LOW) && (SWITCH2 > 10)){
   pageState[0] = 1;
 }else if((digitalRead(SWITCH1) == HIGH) && (SWITCH2 > 10)){
@@ -255,9 +245,9 @@ if(pageState[3] == 1){
 //page1
 //BPM//_bpm = 1/tmp_bpm*60000
 tmp_bpm = 30000/map(valNob[0][0],0,127,10,600);
-stp_tmp = map(valNob[0][1],0,127,1,12);
-attack = map(valNob[0][2],0,127,10,100);
-decay = map(valNob[0][3],0,127,0,4000);
+stp_tmp = map(valNob[0][1],0,127,0,12);
+attack_ms = map(valNob[0][2],0,127,10,1000);
+decay_ms = map(valNob[0][3],0,127,1,2000);
 if(stp_tmp >= 8){
   stp_num = 8;
 }else{
@@ -268,14 +258,14 @@ if(stp_tmp >= 8){
 input[0] = valNob[1][0];//VCO1
 input[1] = valNob[1][1];//VCO2
 Reso = map(valNob[1][2],0, 127, 0, 200);
-cutoff_freq = map(valNob[1][3],0, 127, 30, 255);
+cutoff_freq = map(valNob[1][3],0, 127, 50, 255);
 
 
 //page3
 
 tmp_scale = map(valNob[2][0],0,127,0,8);
-keySft = map(valNob[2][1],0,127,0,6);
-Octv = map(valNob[2][2],0,127,0,1);
+keySft = map(valNob[2][1],0,127,0,11);
+Octv = map(valNob[2][2],0,127,0,2);
 PortT = map(valNob[2][3],0, 127, 0, 500);
 Octv *= 12;
 
@@ -283,6 +273,9 @@ Octv *= 12;
 Lfo_form = map(valNob[3][0],0,127,0,3);
 Lfo_rate = map(valNob[3][1],0, 127, 25, 55);
 Dtn = map(valNob[3][2],0,127,0,50);
+if (valNob[3][2] == 0){
+  Dtn = 0;
+}
 noiseGain = map(valNob[3][3],0,127,0,100);
 
 //VCO
@@ -366,11 +359,19 @@ if((85<input[1])&&(input[1]<=127)){
 
 aNoise.setFreq(mtof(scaleMap[tmp_scale][tmp_read]));
 
+//aSin.setFreq(mtof(pgm_read_byte_near((scaleMap[tmp_scale][tmp_read]))) + Octv + keySft);
+//aTri.setFreq(mtof(pgm_read_byte_near((scaleMap[tmp_scale][tmp_read]))) + Octv + keySft);
+//aSaw.setFreq(mtof(pgm_read_byte_near((scaleMap[tmp_scale][tmp_read]))) + Octv + keySft);
+//aSqu.setFreq(mtof(pgm_read_byte_near((scaleMap[tmp_scale][tmp_read]))) + Octv + keySft);
 aSin.setFreq(mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft);
 aTri.setFreq(mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft);
 aSaw.setFreq(mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft);
 aSqu.setFreq(mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft);
 
+//aSin2.setFreq((mtof(pgm_read_byte_near((scaleMap[tmp_scale][tmp_read]))) + Octv + keySft)+Dtn);
+//aTri2.setFreq((mtof(pgm_read_byte_near((scaleMap[tmp_scale][tmp_read]))) + Octv + keySft)+Dtn);
+//aSaw2.setFreq((mtof(pgm_read_byte_near((scaleMap[tmp_scale][tmp_read]))) + Octv + keySft)+Dtn);
+//aSqu2.setFreq((mtof(pgm_read_byte_near((scaleMap[tmp_scale][tmp_read]))) + Octv + keySft)+Dtn);
 aSin2.setFreq((mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft)+Dtn);
 aTri2.setFreq((mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft)+Dtn);
 aSaw2.setFreq((mtof(scaleMap[tmp_scale][tmp_read]) + Octv + keySft)+Dtn);
@@ -387,6 +388,8 @@ if (PortT > 10){
   aTri2.setFreq_Q16n16(aPortamento.next());
   aSaw2.setFreq_Q16n16(aPortamento.next());
   aSqu2.setFreq_Q16n16(aPortamento.next());
+}else{
+  PortT = 0;
 }
 
 //LFO
@@ -414,51 +417,70 @@ Lfo = (128u + Lfo_s)<<8;
 aLfo.set(Lfo, AUDIO_RATE / CONTROL_RATE);
 
 //AD(noSR)
-Evgain = (int) kEnvelope.next();
+//Evgain = (int) kEnvelope.next();
 
 //Filter
 lpf.setResonance(Reso);
 lpf.setCutoffFreq(cutoff_freq);
 
-digitalWrite(SYNC_OUT, LOW);
-
+//digitalWrite(SYNC_OUT, LOW);
 if(kDelay.ready()){
   if(stp_cnt < stp_num){
     switch(stp_cnt){
     case  0:
+    kEnvelope.set(attack_ms,decay_ms);
+    kEnvelope.start();
       digitalWrite(STEP_1, HIGH);
       digitalWrite(STEP_2, LOW);
       digitalWrite(STEP_3, LOW);
       digitalWrite(STEP_4, LOW);
-      digitalWrite(STEP_5, LOW);
+      if(stp_tmp > 10){
+      digitalWrite(STEP_5, HIGH);
+      }else{
+        digitalWrite(STEP_5, LOW);
+      }
       digitalWrite(STEP_6, LOW);
       digitalWrite(STEP_7, LOW);
       digitalWrite(STEP_8, LOW);
       digitalWrite(SYNC_OUT, HIGH);
     break;
     case  1:
+    kEnvelope.set(attack_ms,decay_ms);
+    kEnvelope.start();
       digitalWrite(STEP_1, LOW);
       digitalWrite(STEP_2, HIGH);
       digitalWrite(STEP_3, LOW);
       digitalWrite(STEP_4, LOW);
       digitalWrite(STEP_5, LOW);
-      digitalWrite(STEP_6, LOW);
+      if(stp_tmp > 10){
+      digitalWrite(STEP_6, HIGH);
+      }else{
+        digitalWrite(STEP_6, LOW);
+      }
       digitalWrite(STEP_7, LOW);
       digitalWrite(STEP_8, LOW);
       digitalWrite(SYNC_OUT, LOW);
     break;
     case  2:
+    kEnvelope.set(attack_ms,decay_ms);
+    kEnvelope.start();
       digitalWrite(STEP_1, LOW);
       digitalWrite(STEP_2, LOW);
       digitalWrite(STEP_3, HIGH);
       digitalWrite(STEP_4, LOW);
       digitalWrite(STEP_5, LOW);
       digitalWrite(STEP_6, LOW);
-      digitalWrite(STEP_7, LOW);
+      if(stp_tmp > 10){
+      digitalWrite(STEP_7, HIGH);
+      }else{
+        digitalWrite(STEP_7, LOW);
+      }
       digitalWrite(STEP_8, LOW);
       digitalWrite(SYNC_OUT, HIGH);
     break;
     case  3:
+    kEnvelope.set(attack_ms,decay_ms);
+    kEnvelope.start();
       digitalWrite(STEP_1, LOW);
       digitalWrite(STEP_2, LOW);
       digitalWrite(STEP_3, LOW);
@@ -466,11 +488,21 @@ if(kDelay.ready()){
       digitalWrite(STEP_5, LOW);
       digitalWrite(STEP_6, LOW);
       digitalWrite(STEP_7, LOW);
-      digitalWrite(STEP_8, LOW);
+      if(stp_tmp > 10){
+      digitalWrite(STEP_8, HIGH);
+      }else{
+        digitalWrite(STEP_8, LOW);
+      }
       digitalWrite(SYNC_OUT, LOW);
     break;
     case  4:
-      digitalWrite(STEP_1, LOW);
+    kEnvelope.set(attack_ms,decay_ms);
+    kEnvelope.start();
+      if(stp_tmp > 10){
+      digitalWrite(STEP_1, HIGH);
+      }else{
+        digitalWrite(STEP_1, LOW);
+      }
       digitalWrite(STEP_2, LOW);
       digitalWrite(STEP_3, LOW);
       digitalWrite(STEP_4, LOW);
@@ -481,8 +513,14 @@ if(kDelay.ready()){
       digitalWrite(SYNC_OUT, HIGH);
     break;
     case  5:
+    kEnvelope.set(attack_ms,decay_ms);
+    kEnvelope.start();
       digitalWrite(STEP_1, LOW);
-      digitalWrite(STEP_2, LOW);
+      if(stp_tmp > 10){
+      digitalWrite(STEP_2, HIGH);
+      }else{
+        digitalWrite(STEP_2, LOW);
+      }
       digitalWrite(STEP_3, LOW);
       digitalWrite(STEP_4, LOW);
       digitalWrite(STEP_5, LOW);
@@ -492,9 +530,15 @@ if(kDelay.ready()){
       digitalWrite(SYNC_OUT, LOW);
     break;
     case  6:
+    kEnvelope.set(attack_ms,decay_ms);
+    kEnvelope.start();
       digitalWrite(STEP_1, LOW);
       digitalWrite(STEP_2, LOW);
-      digitalWrite(STEP_3, LOW);
+      if(stp_tmp > 10){
+      digitalWrite(STEP_3, HIGH);
+      }else{
+        digitalWrite(STEP_3, LOW);
+      }
       digitalWrite(STEP_4, LOW);
       digitalWrite(STEP_5, LOW);
       digitalWrite(STEP_6, LOW);
@@ -503,10 +547,16 @@ if(kDelay.ready()){
       digitalWrite(SYNC_OUT, HIGH);
     break;
     case  7:
+    kEnvelope.set(attack_ms,decay_ms);
+    kEnvelope.start();
       digitalWrite(STEP_1, LOW);
       digitalWrite(STEP_2, LOW);
       digitalWrite(STEP_3, LOW);
-      digitalWrite(STEP_4, LOW);
+      if(stp_tmp > 10){
+      digitalWrite(STEP_4, HIGH);
+      }else{
+        digitalWrite(STEP_4, LOW);
+      }
       digitalWrite(STEP_5, LOW);
       digitalWrite(STEP_6, LOW);
       digitalWrite(STEP_7, LOW);
@@ -514,17 +564,19 @@ if(kDelay.ready()){
       digitalWrite(SYNC_OUT, LOW);
     break;
     }
-  if(tmp_bpm < 400){
+  if(tmp_bpm < 500){
+//    kEnvelope.set(attack_ms,decay_ms);
+//
+//    kEnvelope.start();
     kDelay.start(tmp_bpm);
-    kEnvelope.start(attack,decay);
     stp_cnt++;
   }
-  if(tmp_bpm > 400){
+  if(tmp_bpm > 500){
     time1  = pulseIn(SYNC_IN, HIGH);
     time2  = pulseIn(SYNC_IN, LOW);
     syncIn = time2/1000 + time1/100;
+//    kEnvelope.start(attack_ms,decay_ms);
     kDelay.start(syncIn);
-    kEnvelope.start(attack,decay);
     stp_cnt++;
     }
   }else{
@@ -532,9 +584,10 @@ if(kDelay.ready()){
   }
   }
 
+Evgain = (int) kEnvelope.next();
 
 //Serial.print("1:");
-// Serial.println(mozziAnalogRead(0));
+ Serial.println(cutoff_freq);
 // Serial.print("2:");
 // Serial.println(mozziAnalogRead(1));
 // Serial.print("3:");
@@ -545,27 +598,22 @@ if(kDelay.ready()){
 // Serial.println(mozziAnalogRead(4));
 // Serial.print("6:");
 // Serial.println(mozziAnalogRead(5));
-//Serial.println(tmp_read);
-//Serial.println(curve[0][0]);
-//Serial.println(curve[0][1]);
-//Serial.println(curve[0][2]);
-//Serial.println(curve[0][3]);
-//Serial.println(curve[0][4]);
-//Serial.println(curve[0][5]);
 
 }
 
 int updateAudio(){
-int asig = (aSin.next()*sinGain[0]+aTri.next()*triGain[0]+aSaw.next()*sawGain[0]+aSqu.next()*squGain[0]+aNoise.next()*noiseGain); 
-int asig2 = (aSin2.next()*sinGain[1]+aTri2.next()*triGain[1]+aSaw2.next()*sawGain[1]+aSqu2.next()*squGain[1]+aNoise.next()*noiseGain);
-//int asig = (aSmoothGain.next(sinGain[0])*aSin.next()+aSmoothGain.next(triGain[0])*aTri.next()+aSmoothGain.next(sawGain[0])*aSaw.next()+aSmoothGain.next(squGain[0])*aSqu.next()); 
-//int asig2 = (aSmoothGain.next(sinGain[1])*aSin2.next()+aSmoothGain.next(triGain[1])*aTri2.next()+aSmoothGain.next(sawGain[1])*aSaw2.next()+aSmoothGain.next(squGain[1])*aSqu2.next());
-int premaster1 = asig>>8;
-int premaster2 = asig2>>8;
-int master = (aSmoothGain.next(Evgain)*(lpf.next(premaster1 + premaster2)>>1))>>8;
-if (Lfo_rate > 20){
-return (int)((long)((long) master * aLfo.next()) >> 14);
+int asig = (aSin.next()*sinGain[0]+aTri.next()*triGain[0]+aSaw.next()*sawGain[0]+aSqu.next()*squGain[0])>>8; 
+int asig2 = (aSin2.next()*sinGain[1]+aTri2.next()*triGain[1]+aSaw2.next()*sawGain[1]+aSqu2.next()*squGain[1])>>8;
+int noise = aNoise.next()*noiseGain >>8;
+int premaster = (asig + asig2 + noise)>>4;
+int pm = Evgain*premaster >>8;
+int master = lpf.next(pm);
+//int lpfilterd = lpf.next(premaster);
+//int master = aSmoothGain.next(Evgain)*lpfilterd >>14;
+if (Lfo_rate > 29){
+return (int)((long)((long) master * aLfo.next()) >> 16);
 }else if(Lfo_rate < 29){
+  Lfo_rate = 0;
 return (int) master;
 }
 }
