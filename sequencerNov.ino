@@ -76,6 +76,7 @@ int tmp_scale = 0;
 unsigned int attack_ms = 10;
 unsigned int decay_ms = 10;
 int stp_cnt = 0;
+int stp_cnt2 = 0;
 //int syn_cnt = 0;
 int keySft = 0;
 int Octv = 0;
@@ -119,6 +120,9 @@ byte noiseGain = 0;
 unsigned long syncIn;
 volatile unsigned long time1;
 volatile unsigned long time2;
+volatile unsigned long time3;
+volatile unsigned long time4;
+
 //mapping
 const IntMap readIntMap(0, 1023, 0, 15);
 const IntMap nobIntMap(0,1023,0,127);
@@ -143,12 +147,14 @@ const IntMap cutoffIntMap (0, 127, 50, 255);
 //const IntMap cerv4IntMap(85, 127, 254, 0);
 //const IntMap cerv5IntMap(85, 127, 0, 254);
 volatile boolean mEasure = false;
+volatile boolean mEasure2 = false;
+
 byte j = 1;
 
 void setup(){
   startMozzi(CONTROL_RATE);
-  kDelay.start(250);
-//  Serial.begin(115200);
+//  kDelay.start(250);
+  Serial.begin(115200);
   pinMode(SYNC_OUT,OUTPUT);
   pinMode(STEP_1,OUTPUT);
   pinMode(STEP_2,OUTPUT);
@@ -446,7 +452,7 @@ if((64<input[1])&&(input[1]<=127)){
   squGain[1] = 0;
 }
 
-syncIn = (time2>>1)/1000;
+syncIn = (time2 + time4)/1000;
 
 if(tmp_bpm < 500){
  Bpm = tmp_bpm;
@@ -457,7 +463,6 @@ if(tmp_bpm < 500){
 kDelay.set(Bpm);
 
 kDelay2.set(Bpm);
-int stp_cnt2;
 if(kDelay2.ready()){
   if(stp_cnt2 < 2){
     switch(stp_cnt2){
@@ -476,7 +481,7 @@ if(kDelay2.ready()){
   }
   }
   
-digitalWrite(SYNC_OUT, LOW);
+//digitalWrite(SYNC_OUT, LOW);
 if(kDelay.ready()){
   
   if(stp_cnt < stp_num){
@@ -634,10 +639,10 @@ Evgain = (int) kEnvelope.next();
 lpf.setResonance(Reso);
 lpf.setCutoffFreq(cutoff_freq);
 
-//Serial.print("1:");
-// Serial.println(time1);
-// Serial.print("2:");
-// Serial.println(time2);
+Serial.print("1:");
+ Serial.println(syncIn);
+ Serial.print("2:");
+ Serial.println(time2);
 // Serial.print("3:");
 // Serial.println(syncIn);
 // Serial.print("4:");
@@ -681,6 +686,18 @@ else{
 if(digitalRead(SYNC_IN) == 1){
 time2 = mozziMicros() - time1;
 mEasure = false;
+ }
+}
+if (!mEasure2) {
+ if (digitalRead(SYNC_IN) == 1) {
+  time3 = mozziMicros();
+  mEasure2 = true;
+}
+}
+else{
+if(digitalRead(SYNC_IN) == 0){
+time4 = mozziMicros() - time3;
+mEasure2 = false;
  }
 }
 }
